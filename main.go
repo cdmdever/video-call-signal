@@ -25,10 +25,9 @@ type Msg struct {
 func main() {
 	app := fiber.New()
 	app.Get("/", func(context *fiber.Ctx) error {
-		return context.SendFile("./index.html")
+		clientIP := context.IP()
+		return context.SendString(clientIP)
 	})
-
-	app.Static("/", "/")
 
 	app.Use("/ws/:userId", func(context *fiber.Ctx) error {
 		userId := context.Params("userId")
@@ -77,8 +76,6 @@ func main() {
 							SDP:  msg.SDP,
 						})
 						break
-					} else {
-						fmt.Println("Offer same user :/")
 					}
 				}
 			case "answer":
@@ -118,5 +115,5 @@ func main() {
 		}
 	}))
 
-	log.Fatalln(app.Listen(":3000"))
+	log.Fatalln(app.Listen(":8089"))
 }
