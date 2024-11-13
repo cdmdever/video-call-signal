@@ -5,7 +5,7 @@ go 1.23.3
 require (
 	github.com/gofiber/fiber/v2 v2.6.0
 	github.com/gofiber/websocket/v2 v2.0.2
-	github.com/google/uuid v1.2.0
+	github.com/google/uuid v1.6.0
 )
 
 require (

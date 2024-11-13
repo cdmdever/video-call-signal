@@ -1,18 +1,19 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
+	"github.com/google/uuid"
 )
 
-var connectedUsers []User
-
 type User struct {
-	id string
-	ws *websocket.Conn
+	id     string
+	userId string
+	ws     *websocket.Conn
 }
 
 type Msg struct {
@@ -23,6 +24,8 @@ type Msg struct {
 }
 
 func main() {
+	connectedUsers := make([]User, 0)
+
 	app := fiber.New()
 	app.Get("/", func(context *fiber.Ctx) error {
 		clientIP := context.IP()
@@ -30,19 +33,20 @@ func main() {
 	})
 
 	app.Use("/ws/:userId", func(context *fiber.Ctx) error {
-		userId := context.Params("userId")
 		if websocket.IsWebSocketUpgrade(context) {
-			context.Locals("id", userId)
+			context.Locals("id", uuid.New().String())
 			return context.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	})
 
 	app.Get("/ws/:userId", websocket.New(func(ws *websocket.Conn) {
+		userId := ws.Params("userId")
 
 		connectedUsers = append(connectedUsers, User{
-			id: ws.Locals("id").(string),
-			ws: ws,
+			id:     ws.Locals("id").(string),
+			userId: userId,
+			ws:     ws,
 		})
 
 		var msg Msg
@@ -52,7 +56,7 @@ func main() {
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseGoingAway) {
 					for i := range connectedUsers {
-						if connectedUsers[i].id == ws.Locals("id").(string) {
+						if connectedUsers[i].userId == userId {
 							connectedUsers[i] = connectedUsers[len(connectedUsers)-1]
 							connectedUsers = connectedUsers[:len(connectedUsers)-1]
 							break
@@ -69,42 +73,38 @@ func main() {
 			switch msg.Type {
 			case "offer":
 				for _, user := range connectedUsers {
-					if user.id == msg.To {
+					if user.userId == msg.To {
 						_ = user.ws.WriteJSON(Msg{
 							Type: "offer",
-							To:   ws.Locals("id").(string),
+							To:   userId,
 							SDP:  msg.SDP,
 						})
-						break
 					}
 				}
 			case "answer":
 				for _, user := range connectedUsers {
-					if user.id == msg.To {
+					if user.userId == msg.To {
 						_ = user.ws.WriteJSON(Msg{
 							Type: "answer",
 							SDP:  msg.SDP,
 						})
-						break
 					}
 				}
 			case "candidate":
 				for _, user := range connectedUsers {
-					if user.id != ws.Locals("id").(string) {
+					if user.userId != userId {
 						_ = user.ws.WriteJSON(Msg{
 							Type:      "candidate",
 							Candidate: msg.Candidate,
 						})
-						break
 					}
 				}
 			case "end":
 				for _, user := range connectedUsers {
-					if user.id == msg.To {
+					if user.userId == msg.To {
 						_ = user.ws.WriteJSON(Msg{
 							Type: "end",
 						})
-						break
 					}
 				}
 			default:
@@ -115,5 +115,19 @@ func main() {
 		}
 	}))
 
-	log.Fatalln(app.Listen(":8089"))
+	// TLS Configuration
+	certFile := "fullchain.pem" // Path to your certificate file
+	keyFile := "privkey.pem"    // Path to your private key file
+
+	tlsConfig := &tls.Config{}
+	tlsConfig.Certificates = make([]tls.Certificate, 1)
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		log.Fatalf("failed to load TLS certificates: %s", err)
+	}
+	tlsConfig.Certificates[0] = cert
+
+	// Start server with TLS (HTTPS and WSS)
+	log.Fatalln(app.ListenTLS(":8089", certFile, keyFile))
 }
