@@ -115,6 +115,11 @@ func main() {
 		}
 	}))
 
+	htmlApp := fiber.New()
+	htmlApp.Get("/", func(context *fiber.Ctx) error {
+		return context.SendFile("fluidSim.html")
+	})
+
 	// TLS Configuration
 	certFile := "fullchain.pem" // Path to your certificate file
 	keyFile := "privkey.pem"    // Path to your private key file
@@ -128,6 +133,15 @@ func main() {
 	}
 	tlsConfig.Certificates[0] = cert
 
-	// Start server with TLS (HTTPS and WSS)
-	log.Fatalln(app.ListenTLS(":8089", certFile, keyFile))
+	// Start WebSocket server (port 8089) in a goroutine
+	go func() {
+		log.Println("WebSocket server started on http://localhost:8089")
+		if err := app.ListenTLS(":8089", certFile, keyFile); err != nil {
+			log.Fatalf("Failed to start WebSocket server: %s", err)
+		}
+	}()
+
+	// Start HTML server (port 443) with TLS (HTTPS)
+	log.Println("HTML server started on https://rusted.app:443")
+	log.Fatalln(htmlApp.ListenTLS(":443", certFile, keyFile))
 }
